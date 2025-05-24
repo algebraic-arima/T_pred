@@ -1,52 +1,27 @@
-import mido
+import os
 import numpy as np
 import pandas as pd
-
-def parse_midi_to_sequence(midi_path, time_step=100, num_tracks=4):
-    # 加载MIDI文件
-    midi = mido.MidiFile(midi_path)
-    
-    current_notes = np.zeros(num_tracks, dtype=int)
-    
-    sequence = []
-    current_time = 0
-    
-    events = []
-    for i, track in enumerate(midi.tracks[:num_tracks]):
-        time = 0
-        for msg in track:
-            time += msg.time
-            if msg.type == 'note_on' and msg.velocity > 0:
-                events.append((time, i, 'note_on', msg.note))
-            elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
-                events.append((time, i, 'note_off', msg.note))
-    
-    events.sort(key=lambda x: x[0])
-    
-    event_ptr = 0
-    max_time = events[-1][0] if events else 0
-    while current_time <= max_time:
-        # 处理所有发生在当前时间之前的事件
-        while event_ptr < len(events) and events[event_ptr][0] <= current_time:
-            time, track_idx, action, note = events[event_ptr]
-            if action == 'note_on':
-                current_notes[track_idx] = note
-            elif action == 'note_off' and current_notes[track_idx] == note:
-                current_notes[track_idx] = 0 
-            event_ptr += 1
-        sequence.append(current_notes.copy())
-        current_time += time_step
-    
-    return np.array(sequence)
-
-# 示例使用
-midi_path = "./music/BWV1080.mid"
-time_series = parse_midi_to_sequence(midi_path)
-print(time_series.shape)  # (时间步数, 4)
-
-root_path = "./music/"
-file_name = "bach.csv"
-df = pd.DataFrame(time_series)
-df.to_csv(root_path + file_name, index=False, header=['s', 'a', 't', 'b'])
+from scipy.io import wavfile
 
 
+def wav_to_nparray(wav_path):
+    sample_rate, audio_data = wavfile.read(wav_path)
+    
+    if len(audio_data.shape) == 1:
+        audio_data = np.column_stack((audio_data, audio_data))
+    elif audio_data.shape[1] > 2:
+        audio_data = audio_data[:, :2]
+    
+    return audio_data
+
+s = wav_to_nparray("./datasets/BWV1080_S.wav")
+a = wav_to_nparray("./datasets/BWV1080_A.wav")
+t = wav_to_nparray("./datasets/BWV1080_T.wav")
+b = wav_to_nparray("./datasets/BWV1080_B.wav")
+x = np.concatenate((s, a, t, b), axis=1) * 100
+timestamps = np.arange(len(x)).reshape(-1, 1)
+time_series_with_timestamps = np.hstack((timestamps, x))
+
+df = pd.DataFrame(time_series_with_timestamps[::5,:], columns=['timestamp', 'sl','sr', 'al','ar', 'tl','tr', 'bl','br'])
+
+df.to_csv("./datasets/BACH.csv", index=False)
